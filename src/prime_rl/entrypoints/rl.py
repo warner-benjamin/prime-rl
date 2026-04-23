@@ -36,6 +36,7 @@ TRAINER_TOML = "trainer.toml"
 ORCHESTRATOR_TOML = "orchestrator.toml"
 INFERENCE_TOML = "inference.toml"
 TEACHER_INFERENCE_TOML = "teacher_inference.toml"
+WANDB_SHARED_RUN_ID = "wandb_shared_run_id"
 
 
 def get_physical_gpu_ids() -> list[int]:
@@ -75,6 +76,26 @@ def write_subconfigs(config: RLConfig, output_dir: Path) -> None:
     if teacher_inference is not None:
         with open(output_dir / TEACHER_INFERENCE_TOML, "wb") as f:
             tomli_w.dump(teacher_inference.model_dump(exclude_none=True, mode="json"), f)
+
+
+def setup_wandb_shared_env(config: RLConfig) -> dict[str, str]:
+    """Set up environment variables for shared W&B logging."""
+    if config.wandb is None or not config.wandb.shared:
+        return {}
+
+    run_id_path = config.output_dir / WANDB_SHARED_RUN_ID
+    env = {"WANDB_SHARED_MODE": "1"}
+    env["WANDB_SHARED_RUN_ID"] = os.environ.get("WANDB_SHARED_RUN_ID", uuid.uuid4().hex)
+
+    if config.wandb.autoresume and config.ckpt is not None and config.ckpt.resume_step is not None:
+        if not run_id_path.exists():
+            get_logger().warning(f"Missing W&B shared run id file: {run_id_path}. Starting a new W&B run.")
+        else:
+            env["WANDB_SHARED_RUN_ID"] = run_id_path.read_text().strip()
+    elif config.wandb.autoresume:
+        run_id_path.write_text(f"{env['WANDB_SHARED_RUN_ID']}\n")
+
+    return env
 
 
 def check_gpus_available(gpu_ids: list[int]) -> None:
@@ -142,10 +163,7 @@ def rl_local(config: RLConfig):
     logger.debug(f"RL start command: {' '.join(start_command)}")
 
     # Build shared W&B env vars for subprocesses
-    wandb_shared_env: dict[str, str] = {}
-    if config.wandb and config.wandb.shared:
-        wandb_shared_env["WANDB_SHARED_MODE"] = "1"
-        wandb_shared_env["WANDB_SHARED_RUN_ID"] = os.environ.get("WANDB_SHARED_RUN_ID", uuid.uuid4().hex)
+    wandb_shared_env = setup_wandb_shared_env(config)
 
     # Check for existing processes on GPUs
     all_gpu_ids = list(set(infer_gpu_ids + trainer_gpu_ids + teacher_gpu_ids))
@@ -448,6 +466,7 @@ def write_slurm_script(config: RLConfig, config_dir: Path, script_path: Path) ->
             kv_offload_cpu_bytes=int(infer_deploy.kv_cache_offload.cpu_bytes) if infer_deploy.kv_cache_offload else 0,
             use_nccl_broadcast=config.weight_broadcast is not None and config.weight_broadcast.type == "nccl",
             wandb_shared=config.wandb is not None and config.wandb.shared,
+            wandb_shared_env=setup_wandb_shared_env(config),
             ranks_filter=",".join(map(str, config.trainer.log.ranks_filter)),
         )
     else:
@@ -471,6 +490,7 @@ def write_slurm_script(config: RLConfig, config_dir: Path, script_path: Path) ->
             dp_per_node=(config.deployment.gpus_per_node // config.inference.parallel.tp) if config.inference else 1,
             use_nccl_broadcast=config.weight_broadcast is not None and config.weight_broadcast.type == "nccl",
             wandb_shared=config.wandb is not None and config.wandb.shared,
+            wandb_shared_env=setup_wandb_shared_env(config),
             ranks_filter=",".join(map(str, config.trainer.log.ranks_filter)),
         )
 

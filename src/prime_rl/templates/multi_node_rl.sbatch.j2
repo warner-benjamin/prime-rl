@@ -69,7 +69,7 @@ export OMP_NUM_THREADS=1
 
 {% if wandb_shared -%}
 export WANDB_SHARED_MODE=1
-export WANDB_SHARED_RUN_ID=$(python3 -c "import uuid; print(uuid.uuid4().hex)")
+export WANDB_SHARED_RUN_ID="{{ wandb_shared_env["WANDB_SHARED_RUN_ID"] }}"
 {%- endif %}
 
 # Networking

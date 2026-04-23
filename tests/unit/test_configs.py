@@ -8,7 +8,7 @@ from pydantic_config import ConfigFileError
 
 from prime_rl.configs.inference import InferenceConfig
 from prime_rl.configs.orchestrator import OrchestratorConfig
-from prime_rl.configs.rl import RLConfig
+from prime_rl.configs.rl import RLConfig, SharedWandbConfig
 from prime_rl.configs.sft import SFTConfig
 from prime_rl.configs.trainer import ModelConfig as TrainerModelConfig
 from prime_rl.configs.trainer import TrainerConfig
@@ -154,6 +154,10 @@ def test_cli_overrides_toml(tmp_path):
 def test_removed_fused_lm_head_chunk_size_field_is_rejected():
     with pytest.raises(ValidationError, match="fused_lm_head_chunk_size"):
         TrainerModelConfig.model_validate({"fused_lm_head_chunk_size": "auto"})
+
+
+def test_shared_wandb_autoresume_defaults_to_false():
+    assert SharedWandbConfig().autoresume is False
 
 
 def test_selective_activation_checkpointing_requires_custom_impl():

@@ -89,6 +89,8 @@ class SharedWandbConfig(BaseConfig):
         ),
     ] = True
 
+    autoresume: Annotated[bool, Field(description="Automatically resume the shared W&B run on checkpoint resume.")] = False
+
     @model_validator(mode="after")
     def validate_shared_not_offline(self):
         if self.shared and self.offline:
